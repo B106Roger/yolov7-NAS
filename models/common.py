@@ -427,6 +427,69 @@ class GhostCSPC(BottleneckCSPC):
 
 ##### end of cspnet #####
 
+##### yolov7 #####
+class ELAN(nn.Module):
+    # CSP https://github.com/WongKinYiu/CrossStagePartialNetworks
+    def __init__(self, c1, c2, cn, connection, n):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super(ELAN, self).__init__()
+        print(c2, cn, connection, n)
+        c_ = (len(connection) + 2) * cn
+        n  = n - 2
+
+        self.cv1 = Conv(c1, cn, 1, 1)
+        self.cv2 = Conv(c1, cn, 1, 1)
+        self.m = nn.Sequential(*[Conv(cn, cn, 3, 1) for _ in range(n)])
+        self.cv3 = Conv(c_, c2, 1, 1)
+
+        self.connection = copy(connection)
+        self.n = n
+
+    def forward(self, x):
+        y1 = self.cv1(x)
+        y2 = self.cv2(x)
+        out = y2
+
+        block_indices = list(range( -len(self.m), 0))
+        feat_list = [y1, y2]
+        for idx, m in enumerate(self.m):
+            out = m(out)
+            if block_indices[idx] in self.connection:
+                feat_list.append(out)
+
+        return self.cv3(torch.cat(feat_list, dim=1))
+    
+    
+class ELAN2(nn.Module):
+    # CSP https://github.com/WongKinYiu/CrossStagePartialNetworks
+    def __init__(self, c1, c2, cn, connection, n):  # ch_in, ch_out, number, shortcut, groups, expansion
+        super(ELAN2, self).__init__()
+        c_ = (len(connection) + 4) * cn
+        n  = n - 2
+
+        self.cv1 = Conv(c1, cn*2, 1, 1)
+        self.cv2 = Conv(c1, cn*2, 1, 1)
+        self.m = nn.Sequential(*[Conv(cn, cn, 3, 1) if _!=0 else Conv(cn*2, cn, 3, 1)for _ in range(n)])
+        self.cv3 = Conv(c_, c2, 1, 1)
+
+        self.connection = copy(connection)
+        self.n = n
+
+    def forward(self, x):
+        y1 = self.cv1(x)
+        y2 = self.cv2(x)
+        out = y2
+
+        block_indices = list(range( -len(self.m), 0))
+        feat_list = [y1, y2]
+        for idx, m in enumerate(self.m):
+            out = m(out)
+            if block_indices[idx] in self.connection:
+                feat_list.append(out)
+        return self.cv3(torch.cat(feat_list, dim=1))
+
+##### end of cspnet #####
+
+
 
 ##### yolor #####
 

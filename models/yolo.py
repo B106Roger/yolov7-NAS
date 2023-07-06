@@ -600,7 +600,7 @@ class Model(nn.Module):
 
     def forward_once(self, x, profile=False):
         y, dt = [], []  # outputs
-        for m in self.model:
+        for block_idx, m in enumerate(self.model):
             if m.f != -1:  # if not from previous layer
                 x = y[m.f] if isinstance(m.f, int) else [x if j == -1 else y[j] for j in m.f]  # from earlier layers
 
@@ -623,7 +623,7 @@ class Model(nn.Module):
                 print('%10.1f%10.0f%10.1fms %-40s' % (o, m.np, dt[-1], m.type))
 
             x = m(x)  # run
-            
+            # print(f'{block_idx:2d} {m.__class__.__name__:20s}', x.shape)
             y.append(x if m.i in self.save else None)  # save output
 
         if profile:
@@ -759,7 +759,8 @@ def parse_model(d, ch):  # model_dict, input_channels(3)
                  RepResX, RepResXCSPA, RepResXCSPB, RepResXCSPC, 
                  Ghost, GhostCSPA, GhostCSPB, GhostCSPC,
                  SwinTransformerBlock, STCSPA, STCSPB, STCSPC,
-                 SwinTransformer2Block, ST2CSPA, ST2CSPB, ST2CSPC]:
+                 SwinTransformer2Block, ST2CSPA, ST2CSPB, ST2CSPC,
+                 ELAN, ELAN2]:
             c1, c2 = ch[f], args[0]
             if c2 != no:  # if not output
                 c2 = make_divisible(c2 * gw, 8)
