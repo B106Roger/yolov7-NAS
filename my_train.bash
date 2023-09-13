@@ -1,0 +1,1 @@
+python train.py --workers 8 --device 7 --batch-size 16 --data data/voc.yaml --img 640 --cfg cfg/training/yolov7.yaml --weights '' --name test --hyp data/hyp.scratch.p5.yaml

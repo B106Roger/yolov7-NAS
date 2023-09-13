@@ -34,9 +34,22 @@ from utils.loss import ComputeLoss, ComputeLossOTA
 from utils.plots import plot_images, plot_labels, plot_results, plot_evolution
 from utils.torch_utils import ModelEMA, select_device, intersect_dicts, torch_distributed_zero_first, is_parallel
 from utils.wandb_logging.wandb_utils import WandbLogger, check_wandb_resume
+import os, sys, shutil
 
 logger = logging.getLogger(__name__)
 
+def config_backup(config_bakup_dir, code_backup_dir, args):
+    os.makedirs(config_bakup_dir, exist_ok=True)
+    os.makedirs(code_backup_dir,  exist_ok=True)
+    
+    shutil.copy(args.cfg,  os.path.join(config_bakup_dir, os.path.basename(args.cfg)))
+    shutil.copy(args.hyp,  os.path.join(config_bakup_dir, os.path.basename(args.hyp)))
+    shutil.copy(args.data, os.path.join(config_bakup_dir, os.path.basename(args.data)))
+    with open(os.path.join(config_bakup_dir, 'commandline.txt'), 'w') as f:
+        f.writelines(' '.join(sys.argv))
+        
+    shutil.copy(f'{__file__}',           os.path.join(code_backup_dir, os.path.basename(__file__)))
+    shutil.copy('models/common.py',      os.path.join(code_backup_dir, 'common.py'))
 
 def train(hyp, opt, device, tb_writer=None):
     logger.info(colorstr('hyperparameters: ') + ', '.join(f'{k}={v}' for k, v in hyp.items()))
@@ -49,6 +62,13 @@ def train(hyp, opt, device, tb_writer=None):
     last = wdir / 'last.pt'
     best = wdir / 'best.pt'
     results_file = save_dir / 'results.txt'
+    code_dir    = str(save_dir / 'code') + os.sep     # code backup directory
+    config_dir  = str(save_dir / 'config') + os.sep   # config backup directory
+    
+    # os.makedirs(wdir, exist_ok=True)
+    os.makedirs(code_dir, exist_ok=True)
+    os.makedirs(config_dir, exist_ok=True)
+    config_backup(code_dir, config_dir, opt)
 
     # Save run settings
     with open(save_dir / 'hyp.yaml', 'w') as f:
@@ -85,14 +105,14 @@ def train(hyp, opt, device, tb_writer=None):
         with torch_distributed_zero_first(rank):
             attempt_download(weights)  # download if not found locally
         ckpt = torch.load(weights, map_location=device)  # load checkpoint
-        model = Model(opt.cfg or ckpt['model'].yaml, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
+        model = Model(opt.cfg or ckpt['model'].yaml, ch=3, nc=nc, anchors=hyp.get('anchors'), resolution=opt.img_size).to(device)  # create
         exclude = ['anchor'] if (opt.cfg or hyp.get('anchors')) and not opt.resume else []  # exclude keys
         state_dict = ckpt['model'].float().state_dict()  # to FP32
         state_dict = intersect_dicts(state_dict, model.state_dict(), exclude=exclude)  # intersect
         model.load_state_dict(state_dict, strict=False)  # load
         logger.info('Transferred %g/%g items from %s' % (len(state_dict), len(model.state_dict()), weights))  # report
     else:
-        model = Model(opt.cfg, ch=3, nc=nc, anchors=hyp.get('anchors')).to(device)  # create
+        model = Model(opt.cfg, ch=3, nc=nc, anchors=hyp.get('anchors'), resolution=opt.img_size).to(device)  # create
     with torch_distributed_zero_first(rank):
         check_dataset(data_dict)  # check
     train_path = data_dict['train']
@@ -198,7 +218,10 @@ def train(hyp, opt, device, tb_writer=None):
 
     # EMA
     ema = ModelEMA(model) if rank in [-1, 0] else None
-
+    if rank in [-1, 0]:
+        # Append hardware info
+        with open(results_file, 'a') as f:
+            f.write(model.hardware_info)
     # Resume
     start_epoch, best_fitness = 0, 0.0
     if pretrained:
@@ -428,7 +451,7 @@ def train(hyp, opt, device, tb_writer=None):
 
             # Write
             with open(results_file, 'a') as f:
-                f.write(s + '%10.4g' * 7 % results + '\n')  # append metrics, val_loss
+                f.write(s + '%10.4f' * 7 % results + '\n')  # append metrics, val_loss
             if len(opt.name) and opt.bucket:
                 os.system('gsutil cp %s gs://%s/results/results%s.txt' % (results_file, opt.bucket, opt.name))
 
@@ -518,6 +541,9 @@ def train(hyp, opt, device, tb_writer=None):
                                             name='run_' + wandb_logger.wandb_run.id + '_model',
                                             aliases=['last', 'best', 'stripped'])
         wandb_logger.finish_run()
+        # Append hardware_info
+        with open(results_file, 'a') as f:
+            f.write(model.hardware_info)  # append metrics, val_loss
     else:
         dist.destroy_process_group()
     torch.cuda.empty_cache()

@@ -506,7 +506,7 @@ class IBin(nn.Module):
 
 
 class Model(nn.Module):
-    def __init__(self, cfg='yolor-csp-c.yaml', ch=3, nc=None, anchors=None):  # model, input channels, number of classes
+    def __init__(self, cfg='yolor-csp-c.yaml', ch=3, nc=None, anchors=None, resolution=None):  # model, input channels, number of classes
         super(Model, self).__init__()
         self.traced = False
         if isinstance(cfg, dict):
@@ -575,7 +575,8 @@ class Model(nn.Module):
 
         # Init weights, biases
         initialize_weights(self)
-        self.info()
+        self.resolution = resolution
+        self.hardware_info = self.info()
         logger.info('')
 
     def forward(self, x, augment=False, profile=False):
@@ -729,8 +730,9 @@ class Model(nn.Module):
         copy_attr(m, self, include=('yaml', 'nc', 'hyp', 'names', 'stride'), exclude=())  # copy attributes
         return m
 
-    def info(self, verbose=False, img_size=640):  # print model information
-        model_info(self, verbose, img_size)
+    def info(self, print_str=True):  # print model information
+        print('[Info] Model Resolution', self.resolution)
+        return model_info(self, verbose=True, resolution=self.resolution, print_str=print_str)
 
 
 def parse_model(d, ch):  # model_dict, input_channels(3)

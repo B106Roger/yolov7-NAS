@@ -201,8 +201,8 @@ def fuse_conv_and_bn(conv, bn):
     return fusedconv
 
 
-def model_info(model, verbose=False, img_size=640):
-    # Model information. img_size may be int or list, i.e. img_size=640 or img_size=[640, 320]
+def model_info(model, verbose=False, resolution=(224,224), print_str=False):
+    # Plots a line-by-line description of a PyTorch model
     n_p = sum(x.numel() for x in model.parameters())  # number parameters
     n_g = sum(x.numel() for x in model.parameters() if x.requires_grad)  # number gradients
     if verbose:
@@ -212,17 +212,26 @@ def model_info(model, verbose=False, img_size=640):
             print('%5g %40s %9s %12g %20s %10.3g %10.3g' %
                   (i, name, p.requires_grad, p.numel(), list(p.shape), p.mean(), p.std()))
 
-    try:  # FLOPS
+    # try:  # FLOPS
+    if True:
         from thop import profile
-        stride = max(int(model.stride.max()), 32) if hasattr(model, 'stride') else 32
-        img = torch.zeros((1, model.yaml.get('ch', 3), stride, stride), device=next(model.parameters()).device)  # input
-        flops = profile(deepcopy(model), inputs=(img,), verbose=False)[0] / 1E9 * 2  # stride GFLOPS
-        img_size = img_size if isinstance(img_size, list) else [img_size, img_size]  # expand if int/float
-        fs = ', %.1f GFLOPS @%dx%d' % (flops * img_size[0] / stride * img_size[1] / stride, img_size[0], img_size[1])  # 640x640 GFLOPS
-    except (ImportError, Exception):
-        fs = ''
+        flops = profile(deepcopy(model), inputs=(torch.zeros(1, 3, 64, 64),), verbose=False)[0] / 1E9 * 2
+        fs = ', %.1f GFLOPS' % (flops * 100)  # 640x640 FLOPS
+        res = str((640,640))
+        
+        flops_now = profile(deepcopy(model), inputs=(torch.zeros(1, 3, resolution[0], resolution[1]),), verbose=False)[0] / 1E9 * 2
+        fs_now = ', %.1f GFLOPS' % (flops_now)
+        res_now = str(resolution)
+    # except:
+    #     fs = ''
 
-    logger.info(f"Model Summary: {len(list(model.modules()))} layers, {n_p} parameters, {n_g} gradients{fs}")
+    s1 = 'Model Summary @%s: %g layers, %g parameters, %g gradients%s' % (res,     len(list(model.parameters())), n_p, n_g, fs)
+    s2 = 'Model Summary @%s: %g layers, %g parameters, %g gradients%s' % (res_now, len(list(model.parameters())), n_p, n_g, fs_now)
+    if print_str:
+        print(s1)
+        print(s2)
+    return s1+'\n'+s2
+
 
 
 def load_classifier(name='resnet101', n=2):
