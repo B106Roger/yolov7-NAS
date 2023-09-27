@@ -285,10 +285,10 @@ def train(hyp, opt, device, tb_writer=None):
             c = torch.tensor(labels[:, 0])  # classes
             # cf = torch.bincount(c.long(), minlength=nc) + 1.  # frequency
             # model._initialize_biases(cf.to(device))
-            if plots:
-                #plot_labels(labels, names, save_dir, loggers)
-                if tb_writer:
-                    tb_writer.add_histogram('classes', c, 0)
+            # if plots:
+            #     #plot_labels(labels, names, save_dir, loggers)
+            #     if tb_writer:
+            #         tb_writer.add_histogram('classes', c, 0)
 
             # Anchors
             if not opt.noautoanchor:
@@ -325,7 +325,8 @@ def train(hyp, opt, device, tb_writer=None):
     logger.info(f'Image sizes {imgsz} train, {imgsz_test} test\n'
                 f'Using {dataloader.num_workers} dataloader workers\n'
                 f'Logging results to {save_dir}\n'
-                f'Starting training for {epochs} epochs...')
+                f'cuda version {torch.version.cuda}\n'
+                f'Starting training for {epochs} epochs...\n')
     torch.save(model, wdir / 'init.pt')
     for epoch in range(start_epoch, epochs):  # epoch ------------------------------------------------------------------
         model.train()
@@ -352,11 +353,15 @@ def train(hyp, opt, device, tb_writer=None):
         if rank != -1:
             dataloader.sampler.set_epoch(epoch)
         pbar = enumerate(dataloader)
-        logger.info(('\n' + '%10s' * 8) % ('Epoch', 'gpu_mem', 'box', 'obj', 'cls', 'total', 'labels', 'img_size'))
+        logger.info(('\n' + '%10s' * 11) % ('Epoch', 'gpu_mem', 'box', 'obj', 'cls', 'total', 'labels', 'img_size', 'data_t', 'model_t', 'back_t'))
         if rank in [-1, 0]:
             pbar = tqdm(pbar, total=nb)  # progress bar
         optimizer.zero_grad()
+        # import time
+        
+        iter_time = time.time()
         for i, (imgs, targets, paths, _) in pbar:  # batch -------------------------------------------------------------
+            iter_time = time.time() - iter_time 
             ni = i + nb * epoch  # number integrated batches (since train start)
             imgs = imgs.to(device, non_blocking=True).float() / 255.0  # uint8 to float32, 0-255 to 0.0-1.0
 
@@ -379,6 +384,7 @@ def train(hyp, opt, device, tb_writer=None):
                     ns = [math.ceil(x * sf / gs) * gs for x in imgs.shape[2:]]  # new shape (stretched to gs-multiple)
                     imgs = F.interpolate(imgs, size=ns, mode='bilinear', align_corners=False)
 
+            infer_time = time.time()
             # Forward
             with amp.autocast(enabled=cuda):
                 pred = model(imgs)  # forward
@@ -390,10 +396,11 @@ def train(hyp, opt, device, tb_writer=None):
                     loss *= opt.world_size  # gradient averaged between devices in DDP mode
                 if opt.quad:
                     loss *= 4.
-
+            infer_time = time.time() - infer_time
+            
+            backward_time = time.time()
             # Backward
             scaler.scale(loss).backward()
-
             # Optimize
             if ni % accumulate == 0:
                 scaler.step(optimizer)  # optimizer.step
@@ -401,26 +408,30 @@ def train(hyp, opt, device, tb_writer=None):
                 optimizer.zero_grad()
                 if ema:
                     ema.update(model)
+            backward_time = time.time() - backward_time
 
             # Print
             if rank in [-1, 0]:
                 mloss = (mloss * i + loss_items) / (i + 1)  # update mean losses
                 mem = '%.3gG' % (torch.cuda.memory_reserved() / 1E9 if torch.cuda.is_available() else 0)  # (GB)
-                s = ('%10s' * 2 + '%10.4g' * 6) % (
-                    '%g/%g' % (epoch, epochs - 1), mem, *mloss, targets.shape[0], imgs.shape[-1])
+                s = ('%10s' * 2 + '%10.4g' * 9) % (
+                    '%g/%g' % (epoch, epochs - 1), mem, *mloss, targets.shape[0], imgs.shape[-1], iter_time, infer_time, backward_time)
                 pbar.set_description(s)
-
-                # Plot
-                if plots and ni < 10:
-                    f = save_dir / f'train_batch{ni}.jpg'  # filename
-                    Thread(target=plot_images, args=(imgs, targets, paths, f), daemon=True).start()
-                    # if tb_writer:
-                    #     tb_writer.add_image(f, result, dataformats='HWC', global_step=epoch)
-                    #     tb_writer.add_graph(torch.jit.trace(model, imgs, strict=False), [])  # add model graph
-                elif plots and ni == 10 and wandb_logger.wandb:
-                    wandb_logger.log({"Mosaics": [wandb_logger.wandb.Image(str(x), caption=x.name) for x in
-                                                  save_dir.glob('train*.jpg') if x.exists()]})
-
+                
+                time_thresh = 4
+                if backward_time > time_thresh or infer_time > time_thresh or backward_time > time_thresh:
+                    print(f'threshold exceed iter_time={iter_time:8.4f} infer_time={infer_time:8.4f} backward_time={backward_time:8.4f}')
+                # # Plot
+                # if plots and ni < 10:
+                #     f = save_dir / f'train_batch{ni}.jpg'  # filename
+                #     Thread(target=plot_images, args=(imgs, targets, paths, f), daemon=True).start()
+                #     # if tb_writer:
+                #     #     tb_writer.add_image(f, result, dataformats='HWC', global_step=epoch)
+                #     #     tb_writer.add_graph(torch.jit.trace(model, imgs, strict=False), [])  # add model graph
+                # elif plots and ni == 10 and wandb_logger.wandb:
+                #     wandb_logger.log({"Mosaics": [wandb_logger.wandb.Image(str(x), caption=x.name) for x in
+                #                                   save_dir.glob('train*.jpg') if x.exists()]})
+            iter_time = time.time()
             # end batch ------------------------------------------------------------------------------------------------
         # end epoch ----------------------------------------------------------------------------------------------------
 
@@ -623,7 +634,9 @@ if __name__ == '__main__':
         assert torch.cuda.device_count() > opt.local_rank
         torch.cuda.set_device(opt.local_rank)
         device = torch.device('cuda', opt.local_rank)
-        dist.init_process_group(backend='nccl', init_method='env://')  # distributed backend
+        # dist.init_process_group(backend='gloo', init_method='env://')  # distributed backend
+        dist.init_process_group(backend='gloo')  # distributed backend
+        
         assert opt.batch_size % opt.world_size == 0, '--batch-size must be multiple of CUDA device count'
         opt.batch_size = opt.total_batch_size // opt.world_size
 

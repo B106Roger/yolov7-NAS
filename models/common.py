@@ -431,16 +431,18 @@ class GhostCSPC(BottleneckCSPC):
 import copy
 class ELAN(nn.Module):
     # CSP https://github.com/WongKinYiu/CrossStagePartialNetworks
-    def __init__(self, c1, c2, cn, connection):  # ch_in, ch_out, number, shortcut, groups, expansion
+    def __init__(self, c1, c2, cn, connection, act=True):  # ch_in, ch_out, number, shortcut, groups, expansion
         super(ELAN, self).__init__()
+        act = DEFAULT_ACTIVATION() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        
         c_ = (len(connection) + 2) * cn
         n  = max(connection) + 1 if len(connection) > 0 else 0
         print(c1, c2, cn, connection)
-
-        self.cv1 = Conv(c1, cn, 1, 1)
-        self.cv2 = Conv(c1, cn, 1, 1)
-        self.m = nn.Sequential(*[Conv(cn, cn, 3, 1) for _ in range(n)])
-        self.cv3 = Conv(c_, c2, 1, 1)
+        
+        self.cv1 = Conv(c1, cn, 1, 1, act=act)
+        self.cv2 = Conv(c1, cn, 1, 1, act=act)
+        self.m = nn.Sequential(*[Conv(cn, cn, 3, 1, act=act) for _ in range(n)])
+        self.cv3 = Conv(c_, c2, 1, 1, act=act)
 
         self.connection = copy.copy(connection)
         self.n = n
@@ -463,16 +465,18 @@ class ELAN(nn.Module):
 
 class ELAN2(nn.Module):
     # CSP https://github.com/WongKinYiu/CrossStagePartialNetworks
-    def __init__(self, c1, c2, cn, connection):  # ch_in, ch_out, number, shortcut, groups, expansion
+    def __init__(self, c1, c2, cn, connection, act=True):  # ch_in, ch_out, number, shortcut, groups, expansion
         super(ELAN2, self).__init__()
+        act = DEFAULT_ACTIVATION() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+
         c_ = (len(connection) + 4) * cn
         n  = max(connection) + 1 if len(connection) > 0 else 0
         print(c1, c2, cn, connection)
 
-        self.cv1 = Conv(c1, cn*2, 1, 1)
-        self.cv2 = Conv(c1, cn*2, 1, 1)
-        self.m = nn.Sequential(*[Conv(cn, cn, 3, 1) if _ != 0 else Conv(cn*2, cn, 3, 1)for _ in range(n)])
-        self.cv3 = Conv(c_, c2, 1, 1)
+        self.cv1 = Conv(c1, cn*2, 1, 1, act=act)
+        self.cv2 = Conv(c1, cn*2, 1, 1, act=act)
+        self.m = nn.Sequential(*[Conv(cn, cn, 3, 1, act=act) if _ != 0 else Conv(cn*2, cn, 3, 1, act=act)for _ in range(n)])
+        self.cv3 = Conv(c_, c2, 1, 1, act=act)
 
         self.connection = copy.copy(connection)
         self.n = n

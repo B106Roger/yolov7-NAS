@@ -623,8 +623,10 @@ class Model(nn.Module):
                 dt.append((time_synchronized() - t) * 100)
                 print('%10.1f%10.0f%10.1fms %-40s' % (o, m.np, dt[-1], m.type))
 
+            # print(f'{block_idx:2d} {m.__class__.__name__:20s}', end='')
+            # print(f'in={[tmp.shape for tmp in x] if isinstance(x, list) else x.shape}', end='')
             x = m(x)  # run
-            # print(f'{block_idx:2d} {m.__class__.__name__:20s}', x.shape)
+            # print(f'out={[tmp.shape for tmp in x] if isinstance(x, list) or isinstance(x, tuple) else x.shape}')
             y.append(x if m.i in self.save else None)  # save output
 
         if profile:
@@ -732,7 +734,7 @@ class Model(nn.Module):
 
     def info(self, print_str=True):  # print model information
         print('[Info] Model Resolution', self.resolution)
-        return model_info(self, verbose=True, resolution=self.resolution, print_str=print_str)
+        return model_info(self, verbose=False, resolution=self.resolution, print_str=print_str)
 
 
 def parse_model(d, ch):  # model_dict, input_channels(3)
