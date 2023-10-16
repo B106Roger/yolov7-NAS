@@ -1,0 +1,61 @@
+{
+  nc: 20,
+  depth_multiple: 1.0,
+  width_multiple: 1.0,
+  anchors:
+    &id001 [
+      [10, 13, 16, 30, 33, 23],
+      [30, 61, 62, 45, 59, 119],
+      [116, 90, 156, 198, 373, 326],
+    ],
+  search_space:
+    {
+      ELAN_Search:
+        { gamma_space: [0.75, 1.0, 1.25], connection_space: [0, 1, 2, 3] },
+    },
+  backbone:
+    [
+      [-1, 1, Conv, [32, 3, 2, None, 1, nn.LeakyReLU(0.1)]],
+      [-1, 1, Conv, [64, 3, 2, None, 1, nn.LeakyReLU(0.1)]],
+      [-1, 1, ELAN, [64, 24, [0, 1], nn.LeakyReLU(0.1)]],
+      [-1, 1, MP, []],
+      [-1, 1, ELAN, [128, 64, [0], nn.LeakyReLU(0.1)]],
+      [-1, 1, MP, []],
+      [-1, 1, ELAN, [256, 128, [0, 1], nn.LeakyReLU(0.1)]],
+      [-1, 1, MP, []],
+      [-1, 1, ELAN, [512, 256, [0], nn.LeakyReLU(0.1)]],
+    ],
+  head:
+    [
+      [-1, 1, Conv, [256, 1, 1, None, 1, nn.LeakyReLU(0.1)]],
+      [-2, 1, Conv, [256, 1, 1, None, 1, nn.LeakyReLU(0.1)]],
+      [-1, 1, SP, [5]],
+      [-2, 1, SP, [9]],
+      [-3, 1, SP, [13]],
+      [[-1, -2, -3, -4], 1, Concat, [1]],
+      [-1, 1, Conv, [256, 1, 1, None, 1, nn.LeakyReLU(0.1)]],
+      [[-1, -7], 1, Concat, [1]],
+      [-1, 1, Conv, [256, 1, 1, None, 1, nn.LeakyReLU(0.1)]],
+      [-1, 1, Conv, [128, 1, 1, None, 1, nn.LeakyReLU(0.1)]],
+      [-1, 1, nn.Upsample, [null, 2, nearest]],
+      [6, 1, Conv, [128, 1, 1, None, 1, nn.LeakyReLU(0.1)]],
+      [[-1, -2], 1, Concat, [1]],
+      [-1, 1, ELAN, [128, 80, [0, 1, 2], nn.LeakyReLU(0.1)]],
+      [-1, 1, Conv, [64, 1, 1, None, 1, nn.LeakyReLU(0.1)]],
+      [-1, 1, nn.Upsample, [null, 2, nearest]],
+      [4, 1, Conv, [64, 1, 1, None, 1, nn.LeakyReLU(0.1)]],
+      [[-1, -2], 1, Concat, [1]],
+      [-1, 1, ELAN, [64, 40, [1, 2], nn.LeakyReLU(0.1)]],
+      [-1, 1, Conv, [128, 3, 2, None, 1, nn.LeakyReLU(0.1)]],
+      [[-1, 22], 1, Concat, [1]],
+      [-1, 1, ELAN, [128, 80, [0, 1, 2], nn.LeakyReLU(0.1)]],
+      [-1, 1, Conv, [256, 3, 2, None, 1, nn.LeakyReLU(0.1)]],
+      [[-1, 17], 1, Concat, [1]],
+      [-1, 1, ELAN, [256, 160, [0, 1], nn.LeakyReLU(0.1)]],
+      [27, 1, Conv, [128, 3, 1, None, 1, nn.LeakyReLU(0.1)]],
+      [30, 1, Conv, [256, 3, 1, None, 1, nn.LeakyReLU(0.1)]],
+      [33, 1, Conv, [512, 3, 1, None, 1, nn.LeakyReLU(0.1)]],
+      [[34, 35, 36], 1, IDetect, [20, *id001]],
+    ],
+  csp_gammas: [0.75, 1.0, 1.0, 1.0, 1.25, 1.25, 1.25, 1.25],
+}

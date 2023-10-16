@@ -433,7 +433,7 @@ class ELAN(nn.Module):
     # CSP https://github.com/WongKinYiu/CrossStagePartialNetworks
     def __init__(self, c1, c2, cn, connection, act=True):  # ch_in, ch_out, number, shortcut, groups, expansion
         super(ELAN, self).__init__()
-        act = DEFAULT_ACTIVATION() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        act = nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
         
         c_ = (len(connection) + 2) * cn
         n  = max(connection) + 1 if len(connection) > 0 else 0
@@ -467,7 +467,7 @@ class ELAN2(nn.Module):
     # CSP https://github.com/WongKinYiu/CrossStagePartialNetworks
     def __init__(self, c1, c2, cn, connection, act=True):  # ch_in, ch_out, number, shortcut, groups, expansion
         super(ELAN2, self).__init__()
-        act = DEFAULT_ACTIVATION() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
+        act = nn.SiLU() if act is True else (act if isinstance(act, nn.Module) else nn.Identity())
 
         c_ = (len(connection) + 4) * cn
         n  = max(connection) + 1 if len(connection) > 0 else 0

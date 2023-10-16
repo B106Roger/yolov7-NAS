@@ -635,7 +635,7 @@ if __name__ == '__main__':
         torch.cuda.set_device(opt.local_rank)
         device = torch.device('cuda', opt.local_rank)
         # dist.init_process_group(backend='gloo', init_method='env://')  # distributed backend
-        dist.init_process_group(backend='gloo')  # distributed backend
+        dist.init_process_group(backend='nccl')  # distributed backend
         
         assert opt.batch_size % opt.world_size == 0, '--batch-size must be multiple of CUDA device count'
         opt.batch_size = opt.total_batch_size // opt.world_size
